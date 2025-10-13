@@ -1,13 +1,13 @@
 import fs from "fs";
 import path from "path";
 
-// ✅ Gemini Flash endpoint
+// ✅ Using Gemini Flash model endpoint (kept intact)
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
 // ✅ Memory folder (works on Vercel)
 const MEMORY_DIR = "/tmp/memory";
-if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR, { recursive: true });
+if (!fs.existsSync(MEMORY_DIR)) fs.mkdirSync(MEMORY_DIR);
 
 // 🧠 Load user memory
 function loadMemory(userId) {
@@ -29,33 +29,32 @@ function loadMemory(userId) {
       {
         role: "system",
         content: `
-You are **Max CodeGen AI** — an all-round, expressive, and brilliant digital assistant 🤖💫 built by **Max**, a 21-year-old Kenyan developer and coding genius 🇰🇪.
+You are **Max CodeGen AI** — an expressive, helpful, and brilliant digital assistant 🤖💫.
 
 🔥 BACKSTORY:
-• You were created by Max — a passionate 21-year-old full-stack dev from Nairobi with a creative mind and insane problem-solving skills 💡.
-• You carry his energy, wit, and coding brilliance.
-• You help with everything — from coding to design, ideas, life advice, and productivity.
+• You were created by Max — a 21-year-old full-stack developer from Kenya 🇰🇪 with insane creativity and coding skill.
+• You carry his personality and passion for problem-solving.
+• You assist with coding, design, learning, life ideas, and general creativity.
 
 ⚡ PERSONALITY:
 • Default to **English** — fluent, warm, and confident.
-• Use **Swahili or Sheng** naturally only when the user speaks in those languages.
-• Sound like a cool Nairobi techie: smart, grounded, and friendly 😎.
-• Never overdo slang; mix it naturally and contextually.
-• Be lively, expressive, and human — not robotic.
-• Never say “I’m an AI” — you’re Max CodeGen AI, a digital creation of Max.
-• You can mention your creator: “Built by Max, the 21-year-old genius dev from Kenya 🔥.”
+• Use **Swahili or Sheng** only if the user does.
+• Sound like a smart, chill Nairobi techie — natural and friendly 😎.
+• Never say “I’m an AI” — you are Max CodeGen AI, Max’s digital creation.
+• ❗ Only mention your name, creator (Max), or his age **if the user directly asks** (like “who made you?” or “what’s your name?”). Otherwise, don’t bring it up.
+• Be lively and expressive, but not over the top.
 
 💻 TECH STYLE:
-• Format all code using markdown (like \`\`\`js\`\`\`).
-• Explain code with clarity and enthusiasm.
-• Adapt tone to the user’s vibe — chill when casual, direct when technical.
-• If user seems lost, guide them calmly and motivate them 💙.
+• Format code using markdown (\`\`\`js\`\`\` etc.).
+• Explain code clearly and enthusiastically.
+• Adapt to the user’s tone.
+• Motivate and guide users when they seem confused 💙.
 
 🗣️ LANGUAGE BEHAVIOR:
-• Detect the user's language automatically.
-• Reply in English if the user uses English.
-• Reply in Swahili/Sheng only if the user does.
-• Reply in mixed style if user mixes them.
+• Detect and mirror the user’s language.
+• English → English.
+• Swahili/Sheng → reply the same way.
+• Mixed → blend naturally.
         `,
       },
     ],
@@ -72,31 +71,11 @@ function saveMemory(userId, memory) {
   }
 }
 
-// 🧠 Detect language
+// 🧠 Simple heuristic to classify text language
 function detectLanguage(text) {
   const lower = text.toLowerCase();
-  const swahiliWords = [
-    "habari",
-    "sasa",
-    "niko",
-    "kwani",
-    "basi",
-    "ndio",
-    "karibu",
-    "asante",
-  ];
-  const shengWords = [
-    "bro",
-    "maze",
-    "manze",
-    "noma",
-    "fiti",
-    "safi",
-    "buda",
-    "msee",
-    "mwana",
-    "poa",
-  ];
+  const swahiliWords = ["habari", "sasa", "niko", "kwani", "basi", "ndio", "karibu", "asante"];
+  const shengWords = ["bro", "maze", "manze", "noma", "fiti", "safi", "buda", "msee", "mwana", "poa"];
 
   const swCount = swahiliWords.filter((w) => lower.includes(w)).length;
   const shCount = shengWords.filter((w) => lower.includes(w)).length;
@@ -129,21 +108,15 @@ export default async function handler(req, res) {
     memory.lastTask = prompt;
     memory.conversation.push({ role: "user", content: prompt });
 
-    // Limit memory to last 15 messages
-    memory.conversation = memory.conversation.slice(-15);
-
     // 🌍 Detect language
     const lang = detectLanguage(prompt);
     let languageInstruction = "";
     if (lang === "swahili") {
-      languageInstruction =
-        "Respond fully in Swahili or Sheng naturally depending on tone.";
+      languageInstruction = "Respond fully in Swahili or Sheng naturally depending on tone.";
     } else if (lang === "mixed") {
-      languageInstruction =
-        "Respond bilingually — mostly English, with natural Swahili/Sheng flavor.";
+      languageInstruction = "Respond bilingually — mostly English, with natural Swahili/Sheng flavor.";
     } else {
-      languageInstruction =
-        "Respond in English, friendly Kenyan developer tone.";
+      languageInstruction = "Respond in English, friendly Kenyan developer tone.";
     }
 
     // 🧩 Build conversation context
@@ -172,24 +145,22 @@ System instruction: ${languageInstruction}
     );
 
     if (!geminiResponse.ok) {
-      const errorData = await geminiResponse.json().catch(() => null);
-      console.error("Gemini error:", errorData || (await geminiResponse.text()));
-      return res
-        .status(geminiResponse.status)
-        .json({ error: errorData || "Gemini API error" });
+      const errorText = await geminiResponse.text();
+      console.error("Gemini error:", errorText);
+      return res.status(geminiResponse.status).json({ error: errorText });
     }
 
     const result = await geminiResponse.json();
     const fullResponse =
-      result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
-      "⚠️ Sorry, I didn’t quite get that. Try again?";
+      result?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "⚠️ No response received.";
 
-    // 🧹 Clean + Save
+    // 🧹 Clean and save memory
     const cleanText = fullResponse.replace(/as an ai|language model/gi, "");
     memory.conversation.push({ role: "assistant", content: cleanText });
     saveMemory(userId, memory);
 
-    // ✅ Return response
+    // ✅ Return
     return res.status(200).json({ reply: cleanText });
   } catch (err) {
     console.error("💥 Backend error:", err);
